@@ -17,6 +17,8 @@ import random
 
 
 from employees.models import *
+from dropdown.models import user_links
+
 
 
 
@@ -131,38 +133,32 @@ def get_tokens_for_user(user):
     
     
 class LoginView(GenericAPIView):
-   serializer_class=loginSerializer
-   authentication_classes = [IgnoreBearerTokenAuthentication]
-   def post(self,request,format=None):
-      serializer=loginSerializer(data=request.data)
-      if serializer.is_valid(raise_exception=True):
-         email=serializer.data.get('email')
-         password=serializer.data.get('password')
-         try:
-            user_obj=UserAccount.objects.get(email=email)
-         except:
-            return Response({'status': status.HTTP_404_NOT_FOUND,'message':'Please Registerd user first','data':{"xyz":"123"}}, status=status.HTTP_404_NOT_FOUND)          
-         user=authenticate(email=email,password=password)
-         if user is not None:
-            token=get_tokens_for_user(user)
-            data={"Token":token}
+    serializer_class=loginSerializer
+    authentication_classes = [IgnoreBearerTokenAuthentication]
+    def post(self,request,format=None):
+        serializer=loginSerializer(data=request.data)
+        if serializer.is_valid(raise_exception=True):
+            email=serializer.data.get('email')
+            password=serializer.data.get('password')
+            try:
+               user_obj=UserAccount.objects.get(email=email)
+            except:
+               return Response({'status': status.HTTP_404_NOT_FOUND,'message':'Please Registerd user first','data':{"xyz":"123"}}, status=status.HTTP_404_NOT_FOUND)          
+            user=authenticate(email=email,password=password)
 
             res = Response()
-            res.status_code = status.HTTP_200_OK
-            res.data = {
-                'status': 200,
-                'message': "registrations successful",
-                'data': {
-                    'user_details': user_VF(user.id),
-                    "token": token,
-                },
-            } 
-            res.token = {
-                "token": token,
-            }   
+            if user is not None:
+                token=get_tokens_for_user(user)
+                res.status_code = status.HTTP_200_OK
+                res.data = {
+                    'status': 200,
+                    'message': "registrations successful",
+                    'data': {'user_details': user_VF(user.id),"token": token},
+                } 
+            else:
+                res.status_code =status.HTTP_404_NOT_FOUND
+                res.data = {'status': status.HTTP_404_NOT_FOUND,'message':'Email or password is not Valid','data':{}}
             return res
-         else:
-             return Response({'status': status.HTTP_404_NOT_FOUND,'message':'Email or password is not Valid','data':{}}, status=status.HTTP_404_NOT_FOUND)
          
          
 # class TestView(GenericAPIView):
@@ -170,47 +166,35 @@ class LoginView(GenericAPIView):
 #    def get(self,request,format=None):
 #        print(request.user.username,"work")  
 #        return Response({'status': status.HTTP_404_NOT_FOUND,'message':'','data':[request.user.username,request.user.id,request.user.employee_id]}, status=status.HTTP_404_NOT_FOUND)
-   
-
-
-
-
-
-
-
-# new functions from core
-
 
 class registration_VF(GenericAPIView):
     serializer_class = registrationSerializer
     def post(self, request, format=None, *args, **kwargs):
-        # print('asdfasf',request.user, request.headers)
-        # print('request as view', request.data.get('email'))
         employee_id = request.data.get('employee_id')
         name = request.data.get('name')
 
         res = Response()
         if employee_id == None:
-            res.status_code = status.HTTP_204_NO_CONTENT
-            res.data = {'error': 'employee_id field id is required'}
-            return res
-        
+            res.status_code = status.HTTP_400_BAD_REQUEST
+            res.data = {"status": status.HTTP_400_BAD_REQUEST, "message": "employee_id field id is required", 'data': [] }
+            # return Response(, status = status.HTTP_400_BAD_REQUEST)
         if name == None:
-            res.status_code = status.HTTP_204_NO_CONTENT
-            res.data = {'error': 'name field is required'}
+            res.status_code = status.HTTP_400_BAD_REQUEST
+            res.data={"status": status.HTTP_400_BAD_REQUEST, "message": "name field is required", 'data': [] }
             return res
 
         serializer = registrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        # emp_basic = employee_basic.objects.create(employee_id = employee_id, name = name)
-        # emp_basic = employee_official.objects.create(employee_id = employee_id)
-
         if user is not None:
-            res.data = {'message': 'user registered'}
-            res.status_code = status.HTTP_201_CREATED 
-            return res
+            res.status_code = status.HTTP_201_CREATED
+            res.data = {"status": status.HTTP_201_CREATED, "message": "user registered", 'data': [] }
+        else:
+            res.status_code = status.HTTP_400_BAD_REQUEST
+            res.data = {'status': status.HTTP_400_BAD_REQUEST, "message": "user not registered", 'data':[]}
+            # return Response(, status=status.HTTP_404_NOT_FOUND)
+        return res
         
 
 
@@ -219,39 +203,32 @@ class userSpecificLinkHeader(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = userSpecificLinkSerializer
     def get(self, request, format=None, *args, **kwargs):
-        print(request.user)
         user = request.user
-        from .models import xsup_user_links, Users, employee_official
-        # user = cookieAuth(request)
-        user_id = user.id
-        employee_id = user.employee_id
 
-        usr_role = employee_official.objects.filter(employee_id = employee_id).first()
+        usr_role = employee_official.objects.filter(emp = user.id).first()
         print(usr_role)
         usr_role = usr_role.user_role
-        links = xsup_user_links.objects.filter(access_department = usr_role, link_status = True)
-        # print(links)
+        links = user_links.objects.filter(access_department = usr_role, link_status = True)
         usr_link = []
         for link in links:
             usr_link.append({"title": link.title, 'link_type': link.link_type, 'link': link.user_link })
 
         serializer = userSpecificLinkSerializer(data=usr_link, many=True)
-        serializer.is_valid(raise_exception=True)
-        # print()
         res = Response()
-        res.status_code = status.HTTP_200_OK
-        res.data = {"user_link" : serializer.data}
+        if serializer.is_valid(raise_exception=True):
+            res.status_code = status.HTTP_200_OK
+            res.data = {"status": status.HTTP_200_OK, "message": "successfully fetched", "data":{ "user_link" : serializer.data}}
+        else:        
+            res.status_code = status.HTTP_400_BAD_REQUEST
+            res.data = {"status": status.HTTP_200_OK, "message": "unsuccessful", "data":{}}
         return res
     
-        # return Response({"data": request.headers})
 
 
 
 def user_VF(id):
     
     print('id', id)
-    # user = cookieAuth(request)
-    # user = employee_official.objects.select_related().filter(emp=id).values()
     user = employee_official.objects.get(emp=id)
     data = {
         'user_role' : user.user_role,
@@ -260,12 +237,6 @@ def user_VF(id):
         'employee_id' : user.emp.employee_id,
         'email' : user.emp.email,
     }
-
-    # user_role = user.user_role
-    # print('user', user.employee_id)
-    # employee_id = user.employee_id
-    # user_role = getUserRole(employee_id)
     serializer = userSerializer(data=data)
     serializer.is_valid(raise_exception=True)
-    # if serializer.is_valid(raise_exception=True):
     return  {'user': serializer.data}
